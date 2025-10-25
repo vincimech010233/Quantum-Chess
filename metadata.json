@@ -1,0 +1,5 @@
+{
+  "name": "Quantum Chess",
+  "description": "A web-based chess game with a quantum twist. Pieces can exist in a superposition of multiple squares, adding a layer of probability and strategy. Make a quantum move to split your piece's position, and watch as states collapse upon interaction.",
+  "requestFramePermissions": []
+}
