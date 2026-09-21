@@ -1,49 +1,56 @@
-# Quantum Chess Explained ♟️✨
+# Quantum Chess
 
-Quantum Chess is an innovative strategy game.  
-It re-imagines classical chess.  
-It adds concepts from quantum mechanics. ⚛️
+[Español](README.es.md)
 
----
+A browser-based chess experiment that introduces probabilistic “quantum” moves. It is an educational game prototype, not a physical quantum simulation.
 
-## Core Concept
+## Problem
 
-**Main Goal** → To checkmate the opponent's king. 👑
+Classical chess is deterministic. This project explores how uncertainty changes tactical decisions while keeping the familiar board and pieces.
 
-**New Mechanic** → The Quantum Move.  
+## Solution
 
-This allows a piece to be in superposition.
+Players may make normal moves or place an eligible piece in a two-square superposition. Measurement collapses it to one square, introducing controlled randomness into captures and positioning.
 
-**Superposition** → The piece occupies two potential squares at once. ✌️
+## Features
 
----
+- Classical and quantum move modes
+- Two-position superposition for eligible pieces
+- Voluntary and interaction-triggered measurement
+- React and TypeScript interface
+- Local execution with no account or API key
 
-## Key Features 🔑
+## Architecture
 
-### 1. Types of Moves
-- Players choose a **Classical Move** (standard).  
-- OR they choose a **Quantum Move**.
+- `App.tsx`: game state and turn flow
+- `components/`: board, squares, and pieces
+- `utils/chessLogic.ts`: move validation and chess rules
+- `types.ts`: shared domain types
 
-### 2. Superposition
-- Select a piece (Kings are excluded). 🚫  
-- Choose two valid squares.  
-- The piece now exists in both locations.  
-- Visually, quantum pieces flicker. ✨
+## Installation
 
-### 3. Measurement & Collapse
-A piece collapses to a single, random position when "measured." 🎯
+```bash
+git clone https://github.com/vincimech010233/Quantum-Chess.git
+cd Quantum-Chess
+npm install
+npm run dev
+```
 
-**Voluntary Measurement**  
-- **Action** → A player measures their own quantum piece.  
-- **Result** → It collapses to one square; the turn ends. 🛑
+Production check:
 
-**Forced Measurement (Interaction)**  
-- **Action** → A player attacks an opponent's quantum piece.  
-- **Outcome is Probabilistic:**  
-  - Scenario 1: Piece collapses onto the attacked square and is captured. 🔪  
-  - Scenario 2: Piece collapses onto its other square and evades capture. 💨
+```bash
+npm run build
+npm run preview
+```
 
-### 4. Strategic Depth
-- The game requires managing uncertainty.  
-- Players must calculate the odds of a collapse. 🧠  
-- Capturing a key piece is no longer certain. It is a calculated risk. ⚠️
+## Security considerations
+
+The application runs locally and does not require secrets. Never add API keys or `.env.local` files to version control.
+
+## Limitations
+
+This is a prototype. The quantum rules are a game mechanic and do not model a real quantum computer. Automated tests and complete chess-rule coverage are future work.
+
+## License
+
+No license has been selected yet. All rights are reserved until a license is added.
