@@ -22,6 +22,8 @@ Los jugadores pueden realizar movimientos normales o colocar una pieza apta en u
 
 ## Instalación
 
+Usa Node.js 20.19.0 o posterior, de acuerdo con la herramienta actual de Vite/React.
+
 ```bash
 git clone https://github.com/vincimech010233/Quantum-Chess.git
 cd Quantum-Chess

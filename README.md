@@ -29,6 +29,8 @@ Players may make normal moves or place an eligible piece in a two-square superpo
 
 ## Installation
 
+Use Node.js 20.19.0 or newer, matching the current Vite/React toolchain.
+
 ```bash
 git clone https://github.com/vincimech010233/Quantum-Chess.git
 cd Quantum-Chess
