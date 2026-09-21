@@ -18,7 +18,7 @@ Los jugadores pueden realizar movimientos normales o colocar una pieza apta en u
 - Superposición en dos posiciones
 - Medición voluntaria o provocada por interacción
 - Interfaz con React y TypeScript
-- Ejecución local sin cuentas ni claves API
+- Ejecución completamente local
 
 ## Instalación
 
@@ -28,10 +28,6 @@ cd Quantum-Chess
 npm install
 npm run dev
 ```
-
-## Seguridad
-
-La aplicación funciona localmente y no necesita secretos. No deben versionarse claves API ni archivos `.env.local`.
 
 ## Limitaciones
 

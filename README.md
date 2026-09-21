@@ -18,7 +18,7 @@ Players may make normal moves or place an eligible piece in a two-square superpo
 - Two-position superposition for eligible pieces
 - Voluntary and interaction-triggered measurement
 - React and TypeScript interface
-- Local execution with no account or API key
+- Fully local execution
 
 ## Architecture
 
@@ -42,10 +42,6 @@ Production check:
 npm run build
 npm run preview
 ```
-
-## Security considerations
-
-The application runs locally and does not require secrets. Never add API keys or `.env.local` files to version control.
 
 ## Limitations
 
