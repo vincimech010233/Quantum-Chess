@@ -54,10 +54,41 @@ export const isPositionEqual = (pos1: Position, pos2: Position): boolean => {
     return pos1.row === pos2.row && pos1.col === pos2.col;
 }
 
-const isOutOfBounds = (row: number, col: number) => row < 0 || row > 7 || col < 0 || col > 7;
+export const BOARD_SIZE = 8;
+
+export const isValidPosition = (position: Position): boolean =>
+  !!position && Number.isInteger(position.row) && Number.isInteger(position.col) &&
+  position.row >= 0 && position.row < BOARD_SIZE && position.col >= 0 && position.col < BOARD_SIZE;
+
+/** A representable board has unique IDs and one occupant per in-bounds square.
+ * A piece has one position, or two distinct positions in superposition (never a king).
+ * Partial boards are allowed for fixtures; this does not enforce full chess rules.
+ */
+export const isValidBoard = (pieces: readonly Piece[]): boolean => {
+  if (!Array.isArray(pieces)) return false;
+  const ids = new Set<number>();
+  const occupied = new Set<string>();
+  for (const piece of pieces) {
+    if (!piece || !Number.isInteger(piece.id) || piece.id < 0 || ids.has(piece.id) ||
+        !Object.values(Player).includes(piece.player) || !Object.values(PieceType).includes(piece.type) ||
+        typeof piece.hasMoved !== 'boolean' || !Array.isArray(piece.positions) ||
+        piece.positions.length < 1 || piece.positions.length > 2 ||
+        (piece.type === PieceType.King && piece.positions.length !== 1)) return false;
+    ids.add(piece.id);
+    for (const position of piece.positions) {
+      if (!isValidPosition(position)) return false;
+      const key = `${position.row},${position.col}`;
+      if (occupied.has(key)) return false;
+      occupied.add(key);
+    }
+  }
+  return true;
+};
+
+const isOutOfBounds = (row: number, col: number) => !isValidPosition({ row, col });
 
 export const getValidMoves = (piece: Piece, allPieces: Piece[]): Position[] => {
-  if (piece.positions.length > 1) return []; // Quantum pieces can't move, they must be measured.
+  if (!isValidBoard(allPieces) || !allPieces.includes(piece) || piece.positions.length !== 1) return [];
 
   const moves: Position[] = [];
   const { row, col } = piece.positions[0];
@@ -86,17 +117,19 @@ export const getValidMoves = (piece: Piece, allPieces: Piece[]): Position[] => {
     case PieceType.Pawn:
       const direction = player === Player.White ? -1 : 1;
       // Forward move
-      if (!getPieceAt(row + direction, col)) {
+      if (!isOutOfBounds(row + direction, col) && !getPieceAt(row + direction, col)) {
         moves.push({ row: row + direction, col });
         // Double forward move
-        if (!piece.hasMoved && !getPieceAt(row + 2 * direction, col)) {
+        const startingRow = player === Player.White ? 6 : 1;
+        if (!piece.hasMoved && row === startingRow && !isOutOfBounds(row + 2 * direction, col) &&
+            !getPieceAt(row + 2 * direction, col)) {
           moves.push({ row: row + 2 * direction, col });
         }
       }
       // Captures
       [-1, 1].forEach(dc => {
         const capturePiece = getPieceAt(row + direction, col + dc);
-        if (capturePiece && capturePiece.player !== player) {
+        if (!isOutOfBounds(row + direction, col + dc) && capturePiece && capturePiece.player !== player) {
           moves.push({ row: row + direction, col: col + dc });
         }
       });
@@ -140,4 +173,59 @@ export const getValidMoves = (piece: Piece, allPieces: Piece[]): Position[] => {
       break;
   }
   return moves;
+};
+
+
+/** Superposition is deliberately non-capturing: both destinations must be empty. */
+export const getQuantumMoves = (piece: Piece, pieces: Piece[]): Position[] =>
+  piece?.type === PieceType.King ? [] : getValidMoves(piece, pieces).filter(target =>
+    !pieces.some(other => other.positions.some(position => isPositionEqual(position, target))));
+
+/** Invalid transitions return the original board, without mutating it. Randomness
+ * belongs to the caller: a capture of a quantum piece requires an explicit branch.
+ */
+export const movePiece = (pieces: Piece[], id: number, target: Position, collapseIndex?: number): Piece[] => {
+  if (!isValidBoard(pieces) || !isValidPosition(target)) return pieces;
+  const piece = pieces.find(candidate => candidate.id === id);
+  if (!piece || !getValidMoves(piece, pieces).some(move => isPositionEqual(move, target))) return pieces;
+  const occupant = pieces.find(candidate => candidate.positions.some(position => isPositionEqual(position, target)));
+  let next = pieces;
+  if (occupant) {
+    if (occupant.player === piece.player) return pieces;
+    if (occupant.positions.length === 2) {
+      if (!Number.isInteger(collapseIndex) || collapseIndex! < 0 || collapseIndex! >= occupant.positions.length) return pieces;
+      const finalPosition = occupant.positions[collapseIndex!];
+      next = isPositionEqual(finalPosition, target)
+        ? pieces.filter(candidate => candidate.id !== occupant.id)
+        : pieces.map(candidate => candidate.id === occupant.id ? { ...candidate, positions: [{ ...finalPosition }] } : candidate);
+    } else {
+      next = pieces.filter(candidate => candidate.id !== occupant.id);
+    }
+  }
+  next = next.map(candidate => candidate.id === id ? { ...candidate, positions: [{ ...target }], hasMoved: true } : candidate);
+  return isValidBoard(next) ? next : pieces;
+};
+
+export const splitPiece = (pieces: Piece[], id: number, targets: Position[]): Piece[] => {
+  if (!isValidBoard(pieces) || !Array.isArray(targets) || targets.length !== 2 ||
+      !isValidPosition(targets[0]) || !isValidPosition(targets[1]) || isPositionEqual(targets[0], targets[1])) return pieces;
+  const piece = pieces.find(candidate => candidate.id === id);
+  if (!piece) return pieces;
+  const valid = getQuantumMoves(piece, pieces);
+  if (!targets.every(target => valid.some(move => isPositionEqual(move, target)))) return pieces;
+  const next = pieces.map(candidate => candidate.id === id
+    ? { ...candidate, positions: targets.map(target => ({ ...target })), hasMoved: true }
+    : candidate);
+  return isValidBoard(next) ? next : pieces;
+};
+
+export const measurePiece = (pieces: Piece[], id: number, positionIndex: number): Piece[] => {
+  if (!isValidBoard(pieces)) return pieces;
+  const piece = pieces.find(candidate => candidate.id === id);
+  if (!piece || piece.positions.length !== 2 || !Number.isInteger(positionIndex) ||
+      positionIndex < 0 || positionIndex >= piece.positions.length) return pieces;
+  const next = pieces.map(candidate => candidate.id === id
+    ? { ...candidate, positions: [{ ...candidate.positions[positionIndex] }] }
+    : candidate);
+  return isValidBoard(next) ? next : pieces;
 };

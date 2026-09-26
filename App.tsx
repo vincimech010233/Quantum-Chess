@@ -1,185 +1,113 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Board from './components/Board';
 import { Piece, PieceType, Player, Position, CollapseAnimation } from './types';
-import { getInitialBoard, getValidMoves, isPositionEqual } from './utils/chessLogic';
+import { getInitialBoard, getValidMoves, getQuantumMoves, isPositionEqual, movePiece, splitPiece, measurePiece } from './utils/chessLogic';
 
 const App: React.FC = () => {
-  const [pieces, setPieces] = useState<Piece[]>(getInitialBoard());
+  const [pieces, setPieces] = useState<Piece[]>(getInitialBoard);
   const [currentPlayer, setCurrentPlayer] = useState<Player>(Player.White);
   const [selectedPieceId, setSelectedPieceId] = useState<number | null>(null);
-  const [possibleMoves, setPossibleMoves] = useState<Position[]>([]);
-  const [isQuantumMode, setIsQuantumMode] = useState<boolean>(false);
+  const [isQuantumMode, setIsQuantumMode] = useState(false);
   const [quantumTargets, setQuantumTargets] = useState<Position[]>([]);
-  const [message, setMessage] = useState<string>("White's turn to move.");
+  const [message, setMessage] = useState("White's turn to move.");
   const [gameOver, setGameOver] = useState<string | null>(null);
   const [collapseAnimation, setCollapseAnimation] = useState<CollapseAnimation | null>(null);
-  const [isAnimating, setIsAnimating] = useState<boolean>(false);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const pendingAnimation = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const resetGame = () => {
-    setPieces(getInitialBoard());
-    setCurrentPlayer(Player.White);
+  useEffect(() => () => {
+    if (pendingAnimation.current !== null) clearTimeout(pendingAnimation.current);
+  }, []);
+
+  const clearSelection = () => {
     setSelectedPieceId(null);
-    setPossibleMoves([]);
     setIsQuantumMode(false);
     setQuantumTargets([]);
+  };
+
+  const resetGame = () => {
+    // An old measurement must never overwrite a newly reset game or switch its turn.
+    if (pendingAnimation.current !== null) clearTimeout(pendingAnimation.current);
+    pendingAnimation.current = null;
+    setPieces(getInitialBoard());
+    setCurrentPlayer(Player.White);
+    clearSelection();
     setMessage("White's turn to move.");
     setGameOver(null);
     setCollapseAnimation(null);
     setIsAnimating(false);
   };
 
-  const switchPlayer = useCallback(() => {
-    setCurrentPlayer(prev => {
-        const nextPlayer = prev === Player.White ? Player.Black : Player.White;
-        setMessage(`${nextPlayer === Player.White ? 'White' : 'Black'}'s turn to move.`);
-        return nextPlayer;
-    });
-  }, []);
+  const selectedPiece = pieces.find(piece => piece.id === selectedPieceId);
+  const possibleMoves = selectedPiece
+    ? (isQuantumMode ? getQuantumMoves(selectedPiece, pieces) : getValidMoves(selectedPiece, pieces))
+    : [];
 
-  const handleWin = useCallback((winner: Player) => {
-    const winnerName = winner === Player.White ? "White" : "Black";
-    setGameOver(`${winnerName} wins by capturing the King!`);
-    setMessage(`${winnerName} wins!`);
-  }, []);
-
-  const clearSelection = () => {
-    setSelectedPieceId(null);
-    setPossibleMoves([]);
-    setIsQuantumMode(false);
-    setQuantumTargets([]);
+  const finishMove = (next: Piece[]) => {
+    if (next === pieces) return;
+    const capturedKing = pieces.find(piece => piece.type === PieceType.King && !next.some(other => other.id === piece.id));
+    setPieces(next);
+    clearSelection();
+    if (capturedKing) {
+      const winner = currentPlayer === Player.White ? 'White' : 'Black';
+      setGameOver(`${winner} wins by capturing the King!`);
+      setMessage(`${winner} wins!`);
+    } else {
+      const nextPlayer = currentPlayer === Player.White ? Player.Black : Player.White;
+      setCurrentPlayer(nextPlayer);
+      setMessage(`${nextPlayer === Player.White ? 'White' : 'Black'}'s turn to move.`);
+    }
   };
 
-  const makeMove = useCallback((pieceToMove: Piece, targetPos: Position) => {
-    const opponentPieceAtTarget = pieces.find(p => p.player !== pieceToMove.player && p.positions.some(pos => isPositionEqual(pos, targetPos)));
+  const animateTransition = (piece: Piece, to: Position, next: Piece[]) => {
+    if (next === pieces) return;
+    setIsAnimating(true);
+    setCollapseAnimation({ piece, from: piece.positions, to });
+    clearSelection();
+    pendingAnimation.current = setTimeout(() => {
+      pendingAnimation.current = null;
+      finishMove(next);
+      setCollapseAnimation(null);
+      setIsAnimating(false);
+    }, 800);
+  };
 
-    // Quantum Capture
-    if (opponentPieceAtTarget && opponentPieceAtTarget.positions.length > 1) {
-        const capturedPiece = opponentPieceAtTarget;
-        const finalPositionIndex = Math.floor(Math.random() * capturedPiece.positions.length);
-        const finalPosition = capturedPiece.positions[finalPositionIndex];
-        
-        setIsAnimating(true);
-        setCollapseAnimation({ piece: capturedPiece, from: capturedPiece.positions, to: finalPosition });
-        clearSelection();
-
-        setTimeout(() => {
-            let tempPieces = pieces;
-            let tempMessage = `${capturedPiece.player === Player.White ? "White" : "Black"}'s ${capturedPiece.type} collapsed to ${String.fromCharCode(97 + finalPosition.col)}${8 - finalPosition.row}. `;
-
-            if (isPositionEqual(finalPosition, targetPos)) {
-                tempMessage += "It was captured!";
-                tempPieces = tempPieces.filter(p => p.id !== capturedPiece.id);
-                if (capturedPiece.type === PieceType.King) {
-                    handleWin(pieceToMove.player);
-                    setPieces(tempPieces); // Update pieces before early exit
-                    setIsAnimating(false);
-                    setCollapseAnimation(null);
-                    return;
-                }
-            } else {
-                tempMessage += "The move was safe!";
-                tempPieces = tempPieces.map(p => p.id === capturedPiece.id ? { ...p, positions: [finalPosition] } : p);
-            }
-
-            // Move attacking piece
-            tempPieces = tempPieces.map(p => p.id === pieceToMove.id ? { ...p, positions: [targetPos], hasMoved: true } : p);
-
-            setPieces(tempPieces);
-            setMessage(tempMessage);
-            setCollapseAnimation(null);
-            switchPlayer();
-            setIsAnimating(false);
-        }, 800);
-    } else { // Classical Move
-        let tempPieces = [...pieces];
-        
-        if (opponentPieceAtTarget) {
-            tempPieces = tempPieces.filter(p => p.id !== opponentPieceAtTarget.id);
-            if (opponentPieceAtTarget.type === PieceType.King) {
-                handleWin(pieceToMove.player);
-            }
-        }
-
-        tempPieces = tempPieces.map(p => p.id === pieceToMove.id ? { ...p, positions: [targetPos], hasMoved: true } : p);
-        
-        setPieces(tempPieces);
-        clearSelection();
-        switchPlayer();
-    }
-  }, [pieces, switchPlayer, handleWin]);
-
-
-  const makeQuantumMove = useCallback(() => {
-    if (quantumTargets.length === 2 && selectedPieceId !== null) {
-      setPieces(pieces.map(p => 
-        p.id === selectedPieceId 
-          ? { ...p, positions: quantumTargets, hasMoved: true }
-          : p
-      ));
-      clearSelection();
-      switchPlayer();
-    }
-  }, [pieces, quantumTargets, selectedPieceId, switchPlayer]);
-
-  useEffect(() => {
-    if (quantumTargets.length === 2) {
-      makeQuantumMove();
-    }
-  }, [quantumTargets, makeQuantumMove]);
-  
-  const handleSquareClick = useCallback((row: number, col: number) => {
+  const handleSquareClick = (row: number, col: number) => {
     if (gameOver || isAnimating) return;
-
-    const clickedPos = { row, col };
-    const pieceAtPos = pieces.find(p => p.positions.some(pos => isPositionEqual(pos, clickedPos)));
-
-    if (selectedPieceId !== null) {
-      const selectedPiece = pieces.find(p => p.id === selectedPieceId)!;
-      
-      if (isQuantumMode) {
-        if (possibleMoves.some(move => isPositionEqual(move, clickedPos)) && !quantumTargets.some(qt => isPositionEqual(qt, clickedPos))) {
-          setQuantumTargets(prev => [...prev, clickedPos]);
-        } else {
-            clearSelection();
-        }
-      } else {
-        if (possibleMoves.some(move => isPositionEqual(move, clickedPos))) {
-          makeMove(selectedPiece, clickedPos);
-        } else {
-          clearSelection();
-        }
+    const target = { row, col };
+    const occupant = pieces.find(piece => piece.positions.some(position => isPositionEqual(position, target)));
+    if (selectedPiece) {
+      if (!possibleMoves.some(move => isPositionEqual(move, target))) {
+        clearSelection();
+        return;
       }
-    } else { // No piece selected
-      if (pieceAtPos && pieceAtPos.player === currentPlayer) {
-        if (pieceAtPos.positions.length > 1) { // Click on a quantum piece to measure
-          const finalPositionIndex = Math.floor(Math.random() * pieceAtPos.positions.length);
-          const finalPosition = pieceAtPos.positions[finalPositionIndex];
-          
-          setIsAnimating(true);
-          setCollapseAnimation({ piece: pieceAtPos, from: pieceAtPos.positions, to: finalPosition });
-
-          setTimeout(() => {
-              setPieces(currentPieces => currentPieces.map(p => p.id === pieceAtPos.id ? {...p, positions: [finalPosition]} : p));
-              setMessage(`${pieceAtPos.player === Player.White ? "White" : "Black"}'s ${pieceAtPos.type} measured itself and collapsed to ${String.fromCharCode(97 + finalPosition.col)}${8-finalPosition.row}.`);
-              setCollapseAnimation(null);
-              switchPlayer();
-              setIsAnimating(false);
-          }, 800);
-
-        } else { // Select a classical piece
-          setSelectedPieceId(pieceAtPos.id);
-          setPossibleMoves(getValidMoves(pieceAtPos, pieces));
-        }
+      if (isQuantumMode) {
+        if (quantumTargets.some(position => isPositionEqual(position, target))) return;
+        const targets = [...quantumTargets, target];
+        if (targets.length === 2) finishMove(splitPiece(pieces, selectedPiece.id, targets));
+        else setQuantumTargets(targets);
+      } else {
+        const branch = occupant?.positions.length === 2 ? Math.floor(Math.random() * 2) : undefined;
+        const next = movePiece(pieces, selectedPiece.id, target, branch);
+        if (occupant && branch !== undefined) animateTransition(occupant, occupant.positions[branch], next);
+        else finishMove(next);
+      }
+    } else if (occupant?.player === currentPlayer) {
+      if (occupant.positions.length === 2) {
+        const branch = Math.floor(Math.random() * 2);
+        animateTransition(occupant, occupant.positions[branch], measurePiece(pieces, occupant.id, branch));
+      } else {
+        setSelectedPieceId(occupant.id);
       }
     }
-  }, [gameOver, isAnimating, pieces, selectedPieceId, currentPlayer, isQuantumMode, possibleMoves, quantumTargets, makeMove, switchPlayer]);
+  };
 
   const toggleQuantumMode = () => {
-      if (selectedPieceId !== null && pieces.find(p=>p.id === selectedPieceId)?.type !== PieceType.King) {
-          setIsQuantumMode(prev => !prev);
-          setQuantumTargets([]);
-      }
-  }
+    if (selectedPiece && selectedPiece.type !== PieceType.King && !gameOver && !isAnimating) {
+      setIsQuantumMode(mode => !mode);
+      setQuantumTargets([]);
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row items-center justify-center gap-8 p-4 font-sans bg-[#2C2F33]">
@@ -203,14 +131,14 @@ const App: React.FC = () => {
         </div>
         <button
           onClick={toggleQuantumMode}
-          disabled={selectedPieceId === null || pieces.find(p=>p.id === selectedPieceId)?.type === PieceType.King || isAnimating}
+          disabled={!selectedPiece || selectedPiece.type === PieceType.King || isAnimating || !!gameOver}
           className={`w-full py-3 px-4 rounded-lg text-lg font-bold transition-all duration-300
             ${isQuantumMode 
                 ? 'bg-cyan-500 text-white shadow-[0_0_15px_rgba(0,255,255,0.7)]' 
                 : 'bg-[#5865F2] hover:bg-[#4752C4] text-gray-100'}
             disabled:bg-[#4F545C] disabled:text-gray-400 disabled:cursor-not-allowed`}
         >
-          {isQuantumMode ? 'Select 2nd Target' : 'Quantum Move'}
+          {isQuantumMode ? (quantumTargets.length === 0 ? 'Select 1st Target' : 'Select 2nd Target') : 'Quantum Move'}
         </button>
         <button
           onClick={resetGame}
@@ -222,8 +150,8 @@ const App: React.FC = () => {
             <h3 className="font-bold text-base text-gray-200 mb-2">How to Play:</h3>
             <ul className="list-disc list-inside text-left space-y-1">
                 <li>Select a piece to see its moves.</li>
-                <li>To perform a Quantum Move, select a piece, press the button, then select two valid destination squares. The piece will enter a superposition.</li>
-                <li>Kings cannot enter superposition.</li>
+                <li>To perform a Quantum Move, select a piece, press the button, then select two distinct, empty destination squares. The piece will enter a superposition.</li>
+                <li>Kings cannot enter superposition. Quantum moves do not capture.</li>
                 <li>Clicking your own quantum piece measures it, collapsing it to one position and ending your turn.</li>
                 <li>Attacking a quantum piece forces a measurement. The outcome is probabilistic!</li>
             </ul>
